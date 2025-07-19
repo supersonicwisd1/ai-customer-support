@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+openai
+pinecone-client
+beautifulsoup4
+requests
+python-dotenv
+pydantic
+pydantic-settings
+httpx
+firecrawl-py
