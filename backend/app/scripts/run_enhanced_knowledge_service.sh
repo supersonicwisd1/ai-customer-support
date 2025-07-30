@@ -7,4 +7,4 @@ async def run_enhanced_scrape():
         result = await service.build_comprehensive_knowledge_base()
         print(f'Enhanced scrape completed: {result}')
 
-asyncio.run(run_enhanced_scrape())
+asyncio.run(run_enhanced_scrape())"

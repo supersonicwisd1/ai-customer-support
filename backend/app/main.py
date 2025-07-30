@@ -25,7 +25,7 @@ logging.getLogger("firecrawl").setLevel(logging.WARNING)
 from app.config import settings
 
 # Import API routes
-from app.api import guardrails, cache, vapi, chat
+from app.api import guardrails, cache, vapi, chat, knowledge
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ app.include_router(guardrails.router, prefix="/api")
 app.include_router(cache.router, prefix="/api")
 app.include_router(vapi.router)
 app.include_router(chat.router)
+app.include_router(knowledge.router)
 
 @app.get("/")
 async def root():

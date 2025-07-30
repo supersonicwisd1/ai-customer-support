@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from urllib.parse import urljoin, urlparse
 import aiohttp
@@ -34,6 +34,7 @@ class EnhancedKnowledgeService:
         """Build a comprehensive knowledge base from multiple sources"""
         
         knowledge_data = []
+        timestamp = datetime.now(timezone.utc).isoformat()
         
         # 1. Enhanced Aven Site Crawling
         logger.info("🔄 Crawling Aven website comprehensively...")
@@ -65,14 +66,19 @@ class EnhancedKnowledgeService:
         product_data = await self._process_product_specs()
         knowledge_data.extend(product_data)
         
-        # 7. Process and store in vector database
+        # 7. Save scraped data to files
+        logger.info("💾 Saving scraped data to files...")
+        await self._save_scraped_data_to_files(knowledge_data, timestamp)
+        
+        # 8. Process and store in vector database
         logger.info(f"📚 Processing {len(knowledge_data)} knowledge items...")
         await self._process_and_store_knowledge(knowledge_data)
         
         return {
             "total_items": len(knowledge_data),
             "sources": self._get_source_summary(knowledge_data),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": timestamp,
+            "files_saved": True
         }
     
     async def _fetch_sitemap_urls(self) -> List[str]:
@@ -110,7 +116,7 @@ class EnhancedKnowledgeService:
             return []
 
     async def _crawl_aven_site_enhanced(self) -> List[Dict[str, Any]]:
-        """Enhanced crawling of Aven website with better content extraction"""
+        """Enhanced crawling of Aven website using Firecrawl for JavaScript handling"""
         
         # Fetch URLs from actual sitemap
         urls_to_crawl = await self._fetch_sitemap_urls()
@@ -125,31 +131,188 @@ class EnhancedKnowledgeService:
         # Combine and remove duplicates
         all_urls = list(set(urls_to_crawl + additional_urls))
         
-        logger.info(f"🔄 Crawling {len(all_urls)} URLs from Aven website...")
+        logger.info(f"🔄 Crawling {len(all_urls)} URLs from Aven website using Firecrawl...")
         
         scraped_data = []
         
         for url in all_urls:
             try:
-                async with self.session.get(url, timeout=30) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
-                        
-                        # Extract structured content
-                        content = self._extract_structured_content(soup, url)
-                        if content:
-                            scraped_data.append(content)
-                            logger.info(f"✅ Successfully scraped: {url}")
-                        else:
-                            logger.warning(f"⚠️ No content extracted from: {url}")
+                # Use Firecrawl for better JavaScript handling
+                content = await self._scrape_with_firecrawl(url)
+                if content:
+                    scraped_data.append(content)
+                    logger.info(f"✅ Successfully scraped with Firecrawl: {url}")
+                else:
+                    # Fallback to regular scraping
+                    content = await self._scrape_with_requests(url)
+                    if content:
+                        scraped_data.append(content)
+                        logger.info(f"✅ Successfully scraped with fallback: {url}")
                     else:
-                        logger.warning(f"⚠️ HTTP {response.status} for: {url}")
+                        logger.warning(f"⚠️ No content extracted from: {url}")
                             
             except Exception as e:
                 logger.warning(f"❌ Failed to crawl {url}: {e}")
                 
         return scraped_data
+    
+    async def _scrape_with_firecrawl(self, url: str) -> Optional[Dict[str, Any]]:
+        """Scrape URL using Firecrawl for JavaScript rendering"""
+        try:
+            # Check if Firecrawl API key is available
+            firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
+            if not firecrawl_api_key:
+                logger.warning("⚠️ FIRECRAWL_API_KEY not set, falling back to regular scraping")
+                return None
+            
+            # Use FirecrawlApp like in the working scraper.py
+            from firecrawl import FirecrawlApp
+            
+            firecrawl = FirecrawlApp(api_key=firecrawl_api_key)
+            
+            # Use the same parameters as the working implementation
+            response = firecrawl.scrape_url(
+                url=url,
+                formats=['html', 'markdown'],
+                wait_for=5000,  # Wait for dynamic content
+                timeout=45000,  # 45 second timeout
+                only_main_content=False
+            )
+            
+            if not response.success:
+                logger.warning(f"⚠️ Firecrawl scraping failed for {url}: {response.error}")
+                return None
+                
+            if not response.html:
+                logger.warning(f"⚠️ No HTML content received for {url}")
+                return None
+            
+            # Parse the HTML content
+            soup = BeautifulSoup(response.html, 'html.parser')
+            
+            # Extract title
+            title = response.metadata.get('title') if response.metadata and response.metadata.get('title') else (soup.title.string.strip() if soup.title and soup.title.string else '')
+            
+            # Extract text content
+            text = self._extract_text_from_soup(soup)
+            
+            if text and len(text) > 50:
+                return {
+                    "url": url,
+                    "title": title,
+                    "content": text,
+                    "content_type": self._classify_content(url, title, text),
+                    "headings": self._extract_headings_from_soup(soup),
+                    "source": "aven_website",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "metadata": {
+                        "word_count": len(text.split()),
+                        "has_contact_info": self._has_contact_info(text),
+                        "has_pricing": self._has_pricing_info(text),
+                        "has_features": self._has_feature_info(text),
+                        "scraped_with": "firecrawl"
+                    }
+                }
+            
+            return None
+                
+        except Exception as e:
+            logger.warning(f"❌ Firecrawl error for {url}: {e}")
+            return None
+    
+    async def _scrape_with_requests(self, url: str) -> Optional[Dict[str, Any]]:
+        """Fallback scraping using regular requests"""
+        try:
+            async with self.session.get(url, timeout=30) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Extract structured content
+                    content = self._extract_structured_content(soup, url)
+                    if content:
+                        content["metadata"]["scraped_with"] = "requests"
+                        return content
+                        
+                return None
+                
+        except Exception as e:
+            logger.warning(f"❌ Requests error for {url}: {e}")
+            return None
+    
+    async def _scrape_with_enhanced_requests(self, url: str) -> Optional[Dict[str, Any]]:
+        """Enhanced scraping with better headers and user agent"""
+        try:
+            # Use a more realistic browser user agent
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            async with self.session.get(url, headers=headers, timeout=30) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Try to extract content more intelligently
+                    content = self._extract_enhanced_content(soup, url)
+                    if content:
+                        content["metadata"]["scraped_with"] = "enhanced_requests"
+                        return content
+                        
+                return None
+                
+        except Exception as e:
+            logger.warning(f"❌ Enhanced requests error for {url}: {e}")
+            return None
+    
+    def _extract_headings_from_firecrawl(self, scraped_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract headings from Firecrawl response"""
+        headings = []
+        
+        # Try to extract headings from markdown or HTML
+        markdown = scraped_data.get("markdown", "")
+        if markdown:
+            lines = markdown.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line.startswith('#'):
+                    level = len(line) - len(line.lstrip('#'))
+                    text = line.lstrip('#').strip()
+                    if text:
+                        headings.append({
+                            "level": min(level, 6),
+                            "text": text
+                        })
+        
+        return headings
+    
+    def _extract_text_from_soup(self, soup: BeautifulSoup) -> str:
+        """Extract text content from BeautifulSoup object"""
+        # Remove unwanted elements
+        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+            element.decompose()
+        
+        # Extract text with better formatting
+        text = soup.get_text(separator='\n', strip=True)
+        text = ' '.join(text.split())  # Clean up whitespace
+        
+        return text
+    
+    def _extract_headings_from_soup(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
+        """Extract headings from BeautifulSoup object"""
+        headings = []
+        for i in range(1, 7):
+            for heading in soup.find_all(f'h{i}'):
+                headings.append({
+                    "level": i,
+                    "text": heading.get_text().strip()
+                })
+        return headings
     
     def _extract_structured_content(self, soup: BeautifulSoup, url: str) -> Optional[Dict[str, Any]]:
         """Extract structured content from HTML with better parsing"""
@@ -199,6 +362,74 @@ class EnhancedKnowledgeService:
                 "has_contact_info": self._has_contact_info(text),
                 "has_pricing": self._has_pricing_info(text),
                 "has_features": self._has_feature_info(text)
+            }
+        }
+    
+    def _extract_enhanced_content(self, soup: BeautifulSoup, url: str) -> Optional[Dict[str, Any]]:
+        """Enhanced content extraction with better parsing"""
+        
+        # Remove unwanted elements more thoroughly
+        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript']):
+            element.decompose()
+        
+        # Try multiple content selectors
+        content_selectors = [
+            'main',
+            'article',
+            '[role="main"]',
+            '.content',
+            '.main-content',
+            '#content',
+            '#main',
+            'body'
+        ]
+        
+        main_content = None
+        for selector in content_selectors:
+            main_content = soup.select_one(selector)
+            if main_content:
+                break
+        
+        if not main_content:
+            return None
+            
+        # Extract text with better formatting
+        text = main_content.get_text(separator='\n', strip=True)
+        text = ' '.join(text.split())  # Clean up whitespace
+        
+        if len(text) < 50:  # Skip very short content
+            return None
+            
+        # Extract metadata
+        title = soup.find('title')
+        title_text = title.get_text().strip() if title else ""
+        
+        # Extract headings for structure
+        headings = []
+        for i in range(1, 7):
+            for heading in soup.find_all(f'h{i}'):
+                headings.append({
+                    "level": i,
+                    "text": heading.get_text().strip()
+                })
+        
+        # Determine content type
+        content_type = self._classify_content(url, title_text, text)
+        
+        return {
+            "url": url,
+            "title": title_text,
+            "content": text,
+            "content_type": content_type,
+            "headings": headings,
+            "source": "aven_website",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "metadata": {
+                "word_count": len(text.split()),
+                "has_contact_info": self._has_contact_info(text),
+                "has_pricing": self._has_pricing_info(text),
+                "has_features": self._has_feature_info(text),
+                "scraped_with": "enhanced_requests"
             }
         }
     
@@ -821,6 +1052,28 @@ class EnhancedKnowledgeService:
             source = item.get("source", "unknown")
             source_counts[source] = source_counts.get(source, 0) + 1
         return source_counts
+
+    async def _save_scraped_data_to_files(self, data: List[Dict[str, Any]], timestamp: str):
+        """Save scraped data to JSON files for backup and analysis."""
+        if not data:
+            logger.warning("No data to save to files.")
+            return
+
+        # Create a directory for the current timestamp
+        timestamp_dir = f"scraped_data_{timestamp}"
+        os.makedirs(timestamp_dir, exist_ok=True)
+
+        for item in data:
+            try:
+                # Generate a unique filename based on URL and title
+                filename = f"{hash(item['url'] + item['title'])}.json"
+                filepath = os.path.join(timestamp_dir, filename)
+
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(item, f, indent=4, ensure_ascii=False)
+                logger.info(f"Saved item to {filepath}")
+            except Exception as e:
+                logger.error(f"Failed to save item {item.get('url', 'unknown')} to file: {e}")
 
 # Usage example
 async def main():
