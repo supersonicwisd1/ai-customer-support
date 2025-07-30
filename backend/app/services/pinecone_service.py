@@ -3,6 +3,10 @@ import os
 from typing import List, Dict, Any
 from pinecone import Pinecone, ServerlessSpec
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 class PineconeService:

@@ -4,6 +4,8 @@ from app.services.openai_service import OpenAIService
 from app.services.pinecone_service import PineconeService
 from app.services.cache_service import CacheService
 from app.services.guardrails_service import GuardrailsService
+from app.services.intelligent_response_service import IntelligentResponseService
+from app.services.real_time_learning_service import RealTimeLearningService
 from app.services.query_analyzer import QueryAnalyzer
 from app.services.calendar_service import CalendarService
 import asyncio
@@ -18,71 +20,51 @@ class AssistantService:
         self.pinecone_service = PineconeService()
         self.cache_service = CacheService()
         self.guardrails_service = GuardrailsService()
+        self.intelligent_response_service = IntelligentResponseService()
+        self.learning_service = RealTimeLearningService()
         self.query_analyzer = QueryAnalyzer()
         self.calendar_service = CalendarService()
         self.session_history: Dict[str, List[Dict[str, Any]]] = {}  # session_id -> list of messages
 
-    async def process_message(self, message: str) -> Dict[str, Any]:
-        """Process a text message and return AI response - simplified for chat interface"""
+    async def process_message(self, message: str, session_id: Optional[str] = None, user_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Process a text message and return AI response with enhanced intelligence"""
         try:
-            # Step 1: Analyze query
-            analysis = self.query_analyzer.analyze_query(message)
-            logger.info(f"Query analysis: {analysis}")
-
-            # Step 2: Calendar trigger
-            if analysis.get("calendar_trigger"):
-                meeting = await self.calendar_service.schedule_meeting("user")
-                answer = f"A meeting has been scheduled for you. Details: {meeting}"
-                return {
-                    "answer": answer,
-                    "calendar": meeting,
-                    "analysis": analysis,
-                    "guardrails": {"status": "safe"}
-                }
-
-            # Step 3: Embed question
-            embedding = await self.openai_service.generate_embeddings(message)
-            # Step 4: Search Pinecone
-            kb_results = await self.pinecone_service.search_similar(embedding, top_k=5)
+            # Step 1: Use intelligent response service for enhanced processing
+            response = await self.intelligent_response_service.generate_intelligent_response(message, user_context)
             
-            if not kb_results:
-                logger.warning("No results found in Pinecone, using fallback response")
-                answer = "I'm sorry, I don't have specific information about that in my knowledge base. Please try asking about Aven's services, credit cards, or general information, or contact Aven's customer support directly."
-                return {
-                    "answer": answer,
-                    "sources": [],
-                    "context": "",
-                    "guardrails": {"status": "safe"},
-                    "analysis": analysis
-                }
+            # Step 2: Log interaction for learning
+            if session_id:
+                await self.learning_service.log_interaction({
+                    "query": message,
+                    "response": response.get("answer", ""),
+                    "confidence": response.get("confidence", 0.0),
+                    "sources": response.get("sources", []),
+                    "response_type": response.get("response_type", "general"),
+                    "session_id": session_id
+                })
             
-            context = "\n\n".join([r["text"] for r in kb_results if r.get("text")])
-            sources = [{"url": r["url"], "score": r["score"]} for r in kb_results]
-            # Step 5: Generate answer with OpenAI
-            answer = await self.openai_service.generate_response(message, context)
-            # Step 6: Guardrails check
-            guardrails_result = self.guardrails_service.check_text(answer)
+            # Step 3: Apply guardrails
+            guardrails_result = self.guardrails_service.check_text(response.get("answer", ""))
             if guardrails_result["status"] != "safe":
                 logger.warning(f"Guardrails triggered: {guardrails_result}")
-                fallback = "Sorry, I can't answer that question."
-                return {
-                    "answer": fallback,
-                    "sources": sources,
-                    "context": context,
-                    "guardrails": guardrails_result,
-                    "analysis": analysis
-                }
-            # If safe, return answer
-            return {
-                "answer": answer,
-                "sources": sources,
-                "context": context,
-                "guardrails": guardrails_result,
-                "analysis": analysis
-            }
+                fallback = "I apologize, but I can't provide that information. Please contact Aven's customer support for assistance."
+                response["answer"] = fallback
+                response["guardrails"] = guardrails_result
+            
+            # Step 4: Add guardrails result to response
+            response["guardrails"] = guardrails_result
+            
+            return response
+            
         except Exception as e:
             logger.error(f"AssistantService process_message error: {e}")
-            return {"error": str(e)}
+            return {
+                "answer": "I apologize, but I'm having trouble processing your request right now. Please try again or contact Aven's customer support for immediate assistance.",
+                "error": str(e),
+                "confidence": 0.0,
+                "sources": [],
+                "guardrails": {"status": "safe"}
+            }
 
     async def answer_text_question(self, question: str, session_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Answer a text question using KB search, OpenAI, NLP, and calendar integration. Guardrails enforced."""
@@ -225,4 +207,16 @@ class AssistantService:
             return {"error": str(e)}
 
     def get_session_history(self, session_id: str) -> List[Dict[str, Any]]:
-        return self.session_history.get(session_id, []) 
+        return self.session_history.get(session_id, [])
+    
+    async def get_learning_insights(self) -> Dict[str, Any]:
+        """Get learning insights and improvement recommendations"""
+        return self.learning_service.get_learning_insights()
+    
+    async def generate_learning_report(self) -> Dict[str, Any]:
+        """Generate a comprehensive learning report"""
+        return await self.learning_service.generate_learning_report()
+    
+    async def update_knowledge_base_from_learning(self):
+        """Update knowledge base based on learning insights"""
+        await self.learning_service.update_knowledge_base_from_learning() 

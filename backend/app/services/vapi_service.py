@@ -169,28 +169,26 @@ Remember: You're representing Aven AI, a financial technology company."""
         }
 
     async def get_knowledge_based_response(self, query: str) -> dict:
-        """Answer a query using the knowledge base (Pinecone) and OpenAI."""
+        """Answer a query using the enhanced intelligent response system."""
         try:
-            # Step 1: Embed the query
-            embedding = await self.openai_service.generate_embeddings(query)
-            # Step 2: Search Pinecone
-            kb_results = await self.pinecone_service.search_similar(embedding, top_k=5)
-            if not kb_results:
-                answer = "I'm sorry, I don't have specific information about that in my knowledge base. Please try asking about Aven's services, credit cards, or general information, or contact Aven's customer support directly."
-                return {
-                    "answer": answer,
-                    "sources": [],
-                    "context": ""
-                }
-            context = "\n\n".join([r["text"] for r in kb_results if r.get("text")])
-            sources = [{"url": r["url"], "score": r["score"]} for r in kb_results]
-            # Step 3: Generate answer with OpenAI
-            answer = await self.openai_service.generate_response(query, context)
+            # Use the enhanced assistant service for better responses
+            from app.services.assistant_service import AssistantService
+            assistant_service = AssistantService()
+            
+            # Process the query with enhanced intelligence
+            response = await assistant_service.process_message(query)
+            
             return {
-                "answer": answer,
-                "sources": sources,
-                "context": context
+                "answer": response.get("answer", ""),
+                "sources": response.get("sources", []),
+                "context": response.get("context_used", ""),
+                "confidence": response.get("confidence", 0.0),
+                "response_type": response.get("response_type", "general"),
+                "suggestions": response.get("suggestions", [])
             }
         except Exception as e:
             logging.error(f"VapiService knowledge base Q&A error: {e}")
-            return {"error": str(e)}
+            return {
+                "answer": "I apologize, but I'm having trouble processing your request right now. Please try again or contact Aven's customer support for immediate assistance.",
+                "error": str(e)
+            }
