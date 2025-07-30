@@ -1,104 +1,100 @@
-import { ChatResponse, VoiceInfo, VoiceChatResponse } from '@/types/chat';
-
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const WS_BASE = API_BASE.replace('http', 'ws');
+
+// Log API configuration for debugging
+if (typeof window !== 'undefined') {
+  console.log('API Configuration:', {
+    API_BASE,
+    WS_BASE,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL
+  });
+}
 
 export class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = API_BASE) {
-    this.baseUrl = baseUrl;
+  constructor() {
+    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   }
 
-  // Text Chat
-  async sendMessage(message: string, sessionId?: string): Promise<ChatResponse> {
-    const response = await fetch(`${this.baseUrl}/api/chat/text`, {
+  // Text Chat API
+  async sendTextMessage(message: string): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/chat/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        message,
-        session_id: sessionId,
-        include_sources: true,
-      }),
+      body: JSON.stringify({ message }),
     });
-
     if (!response.ok) {
-      throw new Error(`Chat request failed: ${response.statusText}`);
+      throw new Error(`Failed to send message: ${response.statusText}`);
     }
-
     return response.json();
   }
 
-  // Voice Chat
-  async sendVoiceMessage(audioBlob: Blob, sessionId?: string): Promise<VoiceChatResponse> {
-    const formData = new FormData();
-    formData.append('audio_file', audioBlob, 'audio.wav');
-    if (sessionId) {
-      formData.append('session_id', sessionId);
+  // VAPI Configuration
+  async getVapiConfig(): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/vapi/config`);
+    if (!response.ok) {
+      throw new Error(`Failed to get VAPI config: ${response.statusText}`);
     }
+    return response.json();
+  }
 
-    const response = await fetch(`${this.baseUrl}/api/voice/chat`, {
+  // VAPI Health Check
+  async getVapiHealth(): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/vapi/health`);
+    if (!response.ok) {
+      throw new Error(`Failed to get VAPI health: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  // VAPI Call Management
+  async createVapiCall(sessionId: string): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/vapi/calls`, {
       method: 'POST',
-      body: formData,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ session_id: sessionId }),
     });
-
     if (!response.ok) {
-      throw new Error(`Voice chat request failed: ${response.statusText}`);
+      throw new Error(`Failed to create VAPI call: ${response.statusText}`);
     }
-
     return response.json();
   }
 
-  // Text to Speech
-  async synthesizeSpeech(text: string, voice: string = 'alloy'): Promise<Blob> {
-    const formData = new FormData();
-    formData.append('text', text);
-    formData.append('voice', voice);
-
-    const response = await fetch(`${this.baseUrl}/api/voice/synthesize`, {
-      method: 'POST',
-      body: formData,
-    });
-
+  async getVapiCallStatus(callId: string): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/vapi/calls/${callId}`);
     if (!response.ok) {
-      throw new Error(`Speech synthesis failed: ${response.statusText}`);
+      throw new Error(`Failed to get VAPI call status: ${response.statusText}`);
     }
-
-    return response.blob();
-  }
-
-  // Get Voice Info
-  async getVoiceInfo(): Promise<VoiceInfo> {
-    const response = await fetch(`${this.baseUrl}/api/voice/voices`);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to get voice info: ${response.statusText}`);
-    }
-
     return response.json();
   }
 
-  // Health Check
-  async healthCheck(): Promise<{ status: string }> {
+  async endVapiCall(callId: string): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/vapi/calls/${callId}/end`, {
+      method: 'PUT',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to end VAPI call: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  // Backend Health Check
+  async getBackendHealth(): Promise<any> {
     const response = await fetch(`${this.baseUrl}/health`);
-    
     if (!response.ok) {
-      throw new Error(`Health check failed: ${response.statusText}`);
+      throw new Error(`Backend health check failed: ${response.statusText}`);
     }
-
     return response.json();
   }
 
-  // Voice Health Check
-  async voiceHealthCheck(): Promise<{ status: string; available: boolean }> {
-    const response = await fetch(`${this.baseUrl}/api/voice/health`);
-    
-    if (!response.ok) {
-      throw new Error(`Voice health check failed: ${response.statusText}`);
-    }
-
-    return response.json();
+  // WebSocket URL for VAPI (if needed)
+  getWebSocketUrl(sessionId: string): string {
+    return `ws://localhost:8000/ws/vapi/${sessionId}`;
   }
 }
 

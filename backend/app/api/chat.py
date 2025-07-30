@@ -1,103 +1,61 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
+from typing import Dict, Any
 import logging
-from typing import List, Dict, Any, Optional
-import uuid
 from datetime import datetime
-import os
-from dotenv import load_dotenv
+from pydantic import BaseModel
 
-from app.models.chat import ChatRequest, ChatResponse, ChatSession
-from app.core.ai_agent import AIAgent
-from app.services.openai_service import OpenAIService
-from app.services.pinecone_service import PineconeService
-from app.services.search_service import SearchService
-
-# Load environment variables
-load_dotenv()
+from ..services.assistant_service import AssistantService
 
 logger = logging.getLogger(__name__)
 
-# Create router
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
-# Global AI agent instance (in production, use dependency injection)
-_ai_agent: Optional[AIAgent] = None
+# Lazy initialization - only create when needed
+_assistant_service = None
 
-def get_ai_agent() -> AIAgent:
-    """Get or create AI agent instance"""
-    global _ai_agent
-    if _ai_agent is None:
-        try:
-            # Ensure environment variables are loaded
-            if not os.getenv("OPENAI_API_KEY"):
-                raise ValueError("OPENAI_API_KEY not found in environment")
-            if not os.getenv("PINECONE_API_KEY"):
-                raise ValueError("PINECONE_API_KEY not found in environment")
-            
-            openai_service = OpenAIService()
-            pinecone_service = PineconeService()
-            pinecone_service.initialize_index()
-            
-            _ai_agent = AIAgent(openai_service, pinecone_service)
-            logger.info("AI Agent initialized successfully with search service")
-        except Exception as e:
-            logger.error(f"Failed to initialize AI Agent: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to initialize AI Agent: {str(e)}")
-    return _ai_agent
+def get_assistant_service():
+    global _assistant_service
+    if _assistant_service is None:
+        _assistant_service = AssistantService()
+    return _assistant_service
 
-@router.post("/text", response_model=ChatResponse)
-async def chat_text(request: ChatRequest, ai_agent: AIAgent = Depends(get_ai_agent)):
-    """Handle text chat requests"""
+class ChatMessage(BaseModel):
+    message: str
+
+@router.post("/message")
+async def send_message(chat_message: ChatMessage) -> Dict[str, Any]:
+    """Send a text message and get AI response"""
     try:
-        # Generate session ID if not provided
-        if not request.session_id:
-            request.session_id = str(uuid.uuid4())
+        assistant_service = get_assistant_service()
+        response = await assistant_service.process_message(chat_message.message)
         
-        logger.info(f"Processing chat request: {request.message[:50]}...")
-        
-        # Process the chat request
-        response = await ai_agent.process_chat(request)
-        
-        logger.info(f"Chat response generated successfully")
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@router.get("/history/{session_id}")
-async def get_chat_history(session_id: str, ai_agent: AIAgent = Depends(get_ai_agent)):
-    """Get chat history for a session"""
-    try:
-        history = await ai_agent.get_chat_history(session_id)
         return {
-            "session_id": session_id,
-            "history": history,
-            "message_count": len(history)
+            "success": True,
+            "response": response,
+            "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error getting chat history: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve chat history")
-
-@router.delete("/session/{session_id}")
-async def clear_chat_session(session_id: str, ai_agent: AIAgent = Depends(get_ai_agent)):
-    """Clear a chat session"""
-    try:
-        success = await ai_agent.clear_session(session_id)
-        if success:
-            return {"message": "Session cleared successfully", "session_id": session_id}
-        else:
-            raise HTTPException(status_code=404, detail="Session not found")
-    except Exception as e:
-        logger.error(f"Error clearing session: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to clear session")
+        logger.error(f"Error processing chat message: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process message: {str(e)}")
 
 @router.get("/health")
-async def chat_health():
+async def chat_health_check() -> Dict[str, Any]:
     """Health check for chat service"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow(),
-        "service": "chat"
-    } 
+    try:
+        assistant_service = get_assistant_service()
+        # Test with a simple message
+        response = await assistant_service.process_message("Hello")
+        return {
+            "success": True,
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Chat service health check failed: {e}")
+        return {
+            "success": False,
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        } 

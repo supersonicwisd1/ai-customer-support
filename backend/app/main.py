@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 # Configure logging and suppress warnings
 logging.basicConfig(
@@ -24,22 +25,15 @@ logging.getLogger("firecrawl").setLevel(logging.WARNING)
 from app.config import settings
 
 # Import API routes
-from app.api.chat import router as chat_router
-from app.api.search import router as search_router
-from app.api.voice import router as voice_router
-from app.api.guardrails import router as guardrails_router
+from app.api import guardrails, cache, vapi, chat
 
 # Set up logging
-# logging.basicConfig(level=logging.INFO) # This line is now redundant as logging is configured globally
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Aven AI",
-    description="Aven AI is a platform for AI-powered search and retrieval of information.",
-    version="0.1.0",
-    debug=settings.debug,
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None,
+    title="Aven AI Support Backend",
+    description="AI-powered customer support system for Aven",
+    version="1.0.0"
 )
 
 # CORS
@@ -51,34 +45,56 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
-app.include_router(chat_router)
-app.include_router(search_router)
-app.include_router(voice_router)
-app.include_router(guardrails_router)
+# Only include necessary routers
+app.include_router(guardrails.router, prefix="/api")
+app.include_router(cache.router, prefix="/api")
+app.include_router(vapi.router)
+app.include_router(chat.router)
 
-# Routes
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Aven AI Customer care support"}
+    return {"message": "Aven AI Support Backend API"}
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    """Basic health check that doesn't require API keys"""
+    return {
+        "status": "ok", 
+        "message": "Backend is running",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
-# WebSocket endpoint for real-time chat
-@app.websocket("/ws/chat")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
+@app.get("/health/detailed")
+async def detailed_health_check():
+    """Detailed health check that tests all services (requires API keys)"""
+    health_status = {
+        "status": "ok",
+        "services": {},
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    # Test VAPI service
     try:
-        while True:
-            data = await websocket.receive_text()
-            # For now, just echo back
-            await websocket.send_text(f"Echo: {data}")
-    except WebSocketDisconnect:
-        logger.info("WebSocket disconnected")
+        from app.api.vapi import get_vapi_service
+        vapi_service = get_vapi_service()
+        config = vapi_service.get_web_sdk_config()
+        health_status["services"]["vapi"] = "healthy"
     except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}")
+        health_status["services"]["vapi"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "degraded"
+    
+    # Test guardrails service
+    try:
+        from app.api.guardrails import get_guardrails_service
+        guardrails_service = get_guardrails_service()
+        # Test with a simple safe text
+        result = guardrails_service.check_text("Hello")
+        health_status["services"]["guardrails"] = "healthy"
+    except Exception as e:
+        health_status["services"]["guardrails"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "degraded"
+    
+    return health_status
 
 if __name__ == "__main__":
     uvicorn.run(

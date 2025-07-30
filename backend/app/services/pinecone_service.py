@@ -83,20 +83,31 @@ class PineconeService:
                 include_metadata=True
             )
             
-            return [
-                {
-                    "id": match["id"],
-                    "score": match["score"],
-                    "text": match["metadata"]["text"],
-                    "source": match["metadata"].get("source", ""),
-                    "url": match["metadata"].get("url", "")
-                }
-                for match in results["matches"]
-            ]
+            logger.info(f"Pinecone search results: {results}")
+            
+            processed_results = []
+            for match in results.get("matches", []):
+                try:
+                    metadata = match.get("metadata", {})
+                    processed_result = {
+                        "id": match.get("id", ""),
+                        "score": match.get("score", 0.0),
+                        "text": metadata.get("text", ""),
+                        "source": metadata.get("source", ""),
+                        "url": metadata.get("url", "")
+                    }
+                    processed_results.append(processed_result)
+                except Exception as e:
+                    logger.warning(f"Error processing Pinecone match: {e}, match: {match}")
+                    continue
+            
+            logger.info(f"Processed {len(processed_results)} results from Pinecone")
+            return processed_results
             
         except Exception as e:
             logger.error(f"Pinecone search error: {str(e)}")
-            raise Exception(f"Failed to search documents: {str(e)}")
+            # Return empty results instead of raising exception
+            return []
     
     async def search_vectors(self, query_embedding: List[float], top_k: int = 5) -> List[Dict]:
         """Alias for search_similar - for compatibility with existing code"""

@@ -2,6 +2,7 @@ from openai import OpenAI
 import logging
 import os
 from typing import Optional
+from app.services.cache_service import CacheService
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,8 @@ class OpenAIService:
         
         try:
             self.client = OpenAI(api_key=api_key)
-            logger.info("OpenAI client initialized successfully")
+            self.cache_service = CacheService()
+            logger.info("OpenAI client initialized successfully with caching")
         except Exception as e:
             logger.error(f"Failed to initialize OpenAI client: {e}")
             raise
@@ -50,13 +52,25 @@ class OpenAIService:
             raise Exception(f"Failed to generate response: {str(e)}")
     
     async def generate_embeddings(self, text: str) -> list:
-        """Generate embeddings for text using OpenAI's embedding model"""
+        """Generate embeddings for text using OpenAI's embedding model with caching"""
         try:
+            # Check cache first
+            cached_embedding = await self.cache_service.get_cached_embedding(text)
+            if cached_embedding:
+                logger.debug(f"Cache hit for embedding: {text[:50]}...")
+                return cached_embedding
+            
+            # Generate new embedding
             response = self.client.embeddings.create(
                 model="text-embedding-3-small",
                 input=text
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            
+            # Cache the embedding
+            await self.cache_service.cache_embedding(text, embedding)
+            
+            return embedding
         
         except Exception as e:
             logger.error(f"OpenAI embeddings error: {str(e)}")

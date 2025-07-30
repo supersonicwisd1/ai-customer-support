@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Firecrawl
     firecrawl_api_key: Optional[str] = None
 
+    # VAPI
+    vapi_private_key: Optional[str] = None
+    vapi_public_key: Optional[str] = None
+
     # APP Settings
     debug: bool = False
     cors_origins: list[str] = ["*"]
