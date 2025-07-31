@@ -64,10 +64,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Update user message status
       updateMessage(userMessage.id, { status: 'sent' });
       
+      // Handle the new response structure with guardrails
+      let assistantContent = "I'm sorry, I couldn't process your message.";
+      
+      if (response.success === false) {
+        // Message was blocked by guardrails
+        assistantContent = response.error || "I'm sorry, but I cannot process that message due to safety concerns.";
+      } else if (response.success === true && response.response) {
+        // Check if the response has the new structure
+        if (response.response.message) {
+          assistantContent = response.response.message;
+        } else if (response.response.answer) {
+          assistantContent = response.response.answer;
+        } else if (typeof response.response === 'string') {
+          assistantContent = response.response;
+        }
+      }
+      
       // Create assistant message from backend response
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: response.response.answer || "I'm sorry, I couldn't process your message.",
+        content: assistantContent,
         role: 'assistant',
         timestamp: new Date().toISOString(),
         status: 'sent'

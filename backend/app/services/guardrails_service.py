@@ -27,7 +27,7 @@ class GuardrailsService:
             r'\b\d{3}-\d{2}-\d{4}\b',  # SSN
             r'\b\d{4}-\d{4}-\d{4}-\d{4}\b',  # Credit card
             r'\b\d{3}-\d{3}-\d{4}\b',  # Phone number
-            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email
+            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',  # Email - requires @ symbol
             r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b',  # IP address
         ]
         

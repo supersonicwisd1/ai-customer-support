@@ -29,10 +29,28 @@ class AssistantService:
     async def process_message(self, message: str, session_id: Optional[str] = None, user_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process a text message and return AI response with enhanced intelligence"""
         try:
-            # Step 1: Use intelligent response service for enhanced processing
-            response = await self.intelligent_response_service.generate_intelligent_response(message, user_context)
+            # Step 1: Apply guardrails to user input only
+            guardrails_result = self.guardrails_service.check_text(message)
+            if guardrails_result["status"] != "safe":
+                logger.warning(f"Guardrails triggered on user input: {guardrails_result}")
+                return {
+                    "answer": "I apologize, but I can't process that request due to safety concerns. Please rephrase your question or contact Aven's customer support for assistance.",
+                    "error": "Message blocked by guardrails",
+                    "confidence": 0.0,
+                    "sources": [],
+                    "guardrails": guardrails_result
+                }
             
-            # Step 2: Log interaction for learning
+            # Step 2: Use intelligent response service for enhanced processing
+            try:
+                response = await self.intelligent_response_service.generate_intelligent_response(message, user_context)
+                logger.info("Intelligent response service completed successfully")
+            except Exception as e:
+                logger.warning(f"Intelligent response service failed, using fallback: {e}")
+                # Fallback to simple response generation
+                response = await self._generate_simple_response(message)
+            
+            # Step 3: Log interaction for learning
             if session_id:
                 await self.learning_service.log_interaction({
                     "query": message,
@@ -43,16 +61,8 @@ class AssistantService:
                     "session_id": session_id
                 })
             
-            # Step 3: Apply guardrails
-            guardrails_result = self.guardrails_service.check_text(response.get("answer", ""))
-            if guardrails_result["status"] != "safe":
-                logger.warning(f"Guardrails triggered: {guardrails_result}")
-                fallback = "I apologize, but I can't provide that information. Please contact Aven's customer support for assistance."
-                response["answer"] = fallback
-                response["guardrails"] = guardrails_result
-            
-            # Step 4: Add guardrails result to response
-            response["guardrails"] = guardrails_result
+            # Step 4: Add guardrails result to response (user input was safe)
+            response["guardrails"] = {"status": "safe", "reason": "", "categories": []}
             
             return response
             
@@ -64,6 +74,49 @@ class AssistantService:
                 "confidence": 0.0,
                 "sources": [],
                 "guardrails": {"status": "safe"}
+            }
+    
+    async def _generate_simple_response(self, message: str) -> Dict[str, Any]:
+        """Generate a simple response when intelligent response service fails"""
+        try:
+            # Generate embedding for the query
+            embedding = await self.openai_service.generate_embeddings(message)
+            
+            # Search Pinecone
+            kb_results = await self.pinecone_service.search_similar(embedding, top_k=3)
+            
+            # Create simple prompt
+            context = "\n".join([result.get("content", "") for result in kb_results])
+            
+            prompt = f"""
+            You are a helpful customer support agent for Aven, a financial technology company.
+            
+            Context: {context}
+            
+            User question: {message}
+            
+            Please provide a helpful, accurate response based on the context provided.
+            If you don't have enough information, say so politely.
+            """
+            
+            answer = await self.openai_service.generate_response(prompt, "")
+            
+            return {
+                "answer": answer,
+                "sources": kb_results,
+                "confidence": 0.7 if kb_results else 0.3,
+                "context_used": bool(kb_results),
+                "response_type": "simple_fallback"
+            }
+            
+        except Exception as e:
+            logger.error(f"Simple response generation failed: {e}")
+            return {
+                "answer": "I apologize, but I'm having trouble accessing the information right now. Please try again or contact Aven's customer support for immediate assistance.",
+                "sources": [],
+                "confidence": 0.0,
+                "context_used": False,
+                "response_type": "error_fallback"
             }
 
     async def answer_text_question(self, question: str, session_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:

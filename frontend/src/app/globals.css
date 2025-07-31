@@ -34,6 +34,40 @@
   overflow: hidden;
 }
 
+/* Chat message improvements */
+.chat-message {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.chat-message a {
+  color: #3b82f6;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.chat-message a:hover {
+  color: #1d4ed8;
+}
+
+.dark .chat-message a {
+  color: #60a5fa;
+}
+
+.dark .chat-message a:hover {
+  color: #93c5fd;
+}
+
+/* Message bubble improvements */
+.message-bubble {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.message-bubble:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
 /* Smooth transitions */
 * {
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;

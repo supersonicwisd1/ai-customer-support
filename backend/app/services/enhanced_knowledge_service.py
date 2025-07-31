@@ -457,7 +457,7 @@ class EnhancedKnowledgeService:
         """Check if text contains contact information"""
         contact_patterns = [
             r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # Phone numbers
-            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email
+            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',  # Email
             r'\b(contact|support|help|call|email)\b'
         ]
         return any(re.search(pattern, text, re.IGNORECASE) for pattern in contact_patterns)

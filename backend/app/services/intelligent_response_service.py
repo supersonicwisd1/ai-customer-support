@@ -17,17 +17,23 @@ class IntelligentResponseService:
         """Generate intelligent response with enhanced context understanding"""
         
         try:
+            logger.info(f"Processing intelligent response for query: {query[:100]}...")
+            
             # Step 1: Enhanced query analysis
             query_analysis = await self._analyze_query_intelligently(query)
+            logger.debug(f"Query analysis completed: {query_analysis.get('intent', 'unknown')}")
             
             # Step 2: Multi-source knowledge retrieval
             knowledge_results = await self._retrieve_multi_source_knowledge(query, query_analysis)
+            logger.debug(f"Knowledge retrieval completed: {len(knowledge_results.get('results', []))} results")
             
             # Step 3: Context-aware response generation
             response = await self._generate_context_aware_response(query, knowledge_results, user_context)
+            logger.debug(f"Response generation completed: {len(response.get('answer', '')[:100])} chars")
             
             # Step 4: Response enhancement and validation
             enhanced_response = await self._enhance_response_quality(response, query_analysis)
+            logger.info(f"Intelligent response completed successfully")
             
             return {
                 "answer": enhanced_response["answer"],
@@ -55,24 +61,44 @@ class IntelligentResponseService:
         Analyze this customer query about Aven (a financial technology company):
         Query: "{query}"
         
-        Provide a detailed analysis including:
-        1. Primary intent (information_seeking, problem_solving, application_help, pricing_inquiry, etc.)
-        2. Entities mentioned (products, services, features, etc.)
-        3. Urgency level (low, medium, high)
-        4. Complexity level (simple, moderate, complex)
-        5. Required knowledge domains (product, legal, support, technical, etc.)
-        6. Potential follow-up questions
-        7. Response tone (professional, friendly, technical, etc.)
+        Provide a detailed analysis in valid JSON format with the following structure:
+        {{
+            "intent": "information_seeking|problem_solving|application_help|pricing_inquiry|general_inquiry",
+            "entities": ["product1", "product2"],
+            "urgency": "low|medium|high",
+            "complexity": "simple|moderate|complex",
+            "domains": ["product", "legal", "support", "technical", "general"],
+            "tone": "professional|friendly|technical|casual",
+            "follow_up_suggestions": ["suggestion1", "suggestion2"]
+        }}
         
-        Return as JSON.
+        Important: Return ONLY valid JSON, no additional text.
         """
         
         try:
             analysis_response = await self.openai_service.generate_response(analysis_prompt, "")
+            
+            # Clean the response to ensure it's valid JSON
+            analysis_response = analysis_response.strip()
+            
+            # Remove any markdown formatting if present
+            if analysis_response.startswith("```json"):
+                analysis_response = analysis_response.replace("```json", "").replace("```", "").strip()
+            elif analysis_response.startswith("```"):
+                analysis_response = analysis_response.replace("```", "").strip()
+            
             # Parse the JSON response
             import json
             analysis = json.loads(analysis_response)
+            
+            # Validate required fields
+            required_fields = ["intent", "entities", "urgency", "complexity", "domains", "tone"]
+            for field in required_fields:
+                if field not in analysis:
+                    analysis[field] = "general" if field == "domains" else "medium" if field in ["urgency", "complexity"] else "information_seeking" if field == "intent" else "professional" if field == "tone" else []
+            
             return analysis
+            
         except Exception as e:
             logger.warning(f"Query analysis failed, using fallback: {e}")
             return {
@@ -81,7 +107,8 @@ class IntelligentResponseService:
                 "urgency": "medium",
                 "complexity": "moderate",
                 "domains": ["general"],
-                "tone": "professional"
+                "tone": "professional",
+                "follow_up_suggestions": []
             }
     
     async def _retrieve_multi_source_knowledge(self, query: str, analysis: Dict[str, Any]) -> Dict[str, Any]:
