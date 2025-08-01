@@ -45,7 +45,6 @@ packaging==24.2
 pinecone==7.3.0
 pinecone-client==5.0.1
 pinecone-plugin-assistant==1.7.0
-pinecone-plugin-inference==1.1.0
 pinecone-plugin-interface==0.0.7
 playwright==1.53.0
 preshed==3.0.10
