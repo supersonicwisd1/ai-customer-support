@@ -42,7 +42,7 @@ nest-asyncio==1.6.0
 numpy==2.3.1
 openai==1.51.0
 packaging==24.2
-pinecone-client>=2.2.4
+pinecone
 playwright==1.53.0
 preshed==3.0.10
 propcache==0.3.2
