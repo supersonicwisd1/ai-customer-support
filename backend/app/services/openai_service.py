@@ -31,18 +31,22 @@ class OpenAIService:
             prompt = f"""
             You are a helpful customer support agent for Aven, a financial technology company.
             
+            Contact Information:
+            - Email: support@aven.com
+            - Support Website: https://www.aven.com/support
+            
             Context: {context}
             
             User question: {message}
             
             Please provide a helpful, accurate response based on the context provided.
-            If you don't have enough information, say so politely.
+            If you don't have enough information, say so politely and provide the correct contact information.
             """
             
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",  # Using more cost-effective model
                 messages=[
-                    {"role": "system", "content": "You are a helpful customer support agent for Aven."},
+                    {"role": "system", "content": "You are a helpful customer support agent for Aven. Contact: support@aven.com, Support: https://www.aven.com/support"},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=500,

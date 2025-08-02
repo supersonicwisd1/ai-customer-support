@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import List, Dict, Any
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -36,8 +36,7 @@ class PineconeService:
                 self.pc.create_index(
                     name=self.index_name,
                     dimension=1536,  # text-embedding-3-small dimension
-                    metric="cosine",
-                    spec=ServerlessSpec(cloud="aws", region="us-east-1")
+                    metric="cosine"
                 )
                 logger.info(f"Created Pinecone index: {self.index_name}")
             
@@ -98,23 +97,22 @@ class PineconeService:
                         "score": match.get("score", 0.0),
                         "text": metadata.get("text", ""),
                         "source": metadata.get("source", ""),
-                        "url": metadata.get("url", "")
+                        "url": metadata.get("url", ""),
+                        "timestamp": metadata.get("timestamp", "")
                     }
                     processed_results.append(processed_result)
                 except Exception as e:
-                    logger.warning(f"Error processing Pinecone match: {e}, match: {match}")
+                    logger.warning(f"Error processing search result: {e}")
                     continue
             
-            logger.info(f"Processed {len(processed_results)} results from Pinecone")
             return processed_results
             
         except Exception as e:
             logger.error(f"Pinecone search error: {str(e)}")
-            # Return empty results instead of raising exception
-            return []
+            raise Exception(f"Failed to search documents: {str(e)}")
     
     async def search_vectors(self, query_embedding: List[float], top_k: int = 5) -> List[Dict]:
-        """Alias for search_similar - for compatibility with existing code"""
+        """Search for similar vectors"""
         return await self.search_similar(query_embedding, top_k)
     
     async def upsert_vectors(self, vectors: List[Dict[str, Any]]):
@@ -129,3 +127,50 @@ class PineconeService:
         except Exception as e:
             logger.error(f"Pinecone upsert error: {str(e)}")
             raise Exception(f"Failed to upsert vectors: {str(e)}")
+    
+    def get_index_stats(self) -> Dict[str, Any]:
+        """Get index statistics"""
+        if not self.index:
+            self.initialize_index()
+            
+        try:
+            stats = self.index.describe_index_stats()
+            return {
+                "total_vector_count": stats.get("total_vector_count", 0),
+                "dimension": stats.get("dimension", 0),
+                "index_fullness": stats.get("index_fullness", 0),
+                "namespaces": stats.get("namespaces", {})
+            }
+        except Exception as e:
+            logger.error(f"Failed to get index stats: {e}")
+            return {"error": str(e)}
+    
+    def delete_vectors(self, ids: List[str]):
+        """Delete vectors by IDs"""
+        if not self.index:
+            self.initialize_index()
+            
+        try:
+            self.index.delete(ids=ids)
+            logger.info(f"Deleted {len(ids)} vectors from Pinecone")
+        except Exception as e:
+            logger.error(f"Failed to delete vectors: {e}")
+            raise Exception(f"Failed to delete vectors: {str(e)}")
+    
+    def clear_index(self):
+        """Clear all vectors from the index"""
+        if not self.index:
+            self.initialize_index()
+            
+        try:
+            # Get all vector IDs and delete them
+            stats = self.index.describe_index_stats()
+            namespaces = stats.get("namespaces", {})
+            
+            for namespace in namespaces:
+                self.index.delete(namespace=namespace)
+            
+            logger.info("Cleared all vectors from Pinecone index")
+        except Exception as e:
+            logger.error(f"Failed to clear index: {e}")
+            raise Exception(f"Failed to clear index: {str(e)}")

@@ -274,7 +274,7 @@ class IntelligentResponseService:
         
         # Add contact information for complex queries
         if query_analysis.get("complexity") == "complex":
-            enhanced_response["answer"] += "\n\nFor detailed assistance with your specific situation, please contact Aven's support team at support@aven.com or call our customer service line."
+            enhanced_response["answer"] += "\n\nFor detailed assistance with your specific situation, please contact Aven's support team at support@aven.com or visit https://www.aven.com/support."
         
         return enhanced_response
     

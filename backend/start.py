@@ -7,11 +7,15 @@ Handles environment setup and graceful startup
 import os
 import sys
 import logging
+import warnings
 from pathlib import Path
 
 # Add the backend directory to Python path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
+
+# Suppress VAPI syntax warnings (harmless warnings from VAPI SDK)
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="vapi")
 
 # Configure logging
 logging.basicConfig(

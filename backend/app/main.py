@@ -18,6 +18,9 @@ warnings.filterwarnings("ignore", message="Field name.*shadows an attribute in p
 warnings.filterwarnings("ignore", message="Field name.*shadows an attribute in parent.*BaseModel.*")
 warnings.filterwarnings("ignore", message="Field name.*shadows an attribute in parent.*FirecrawlDocument.*")
 
+# Suppress VAPI syntax warnings (harmless warnings from VAPI SDK)
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="vapi")
+
 # Suppress specific library warnings
 logging.getLogger("pydantic").setLevel(logging.ERROR)
 logging.getLogger("firecrawl").setLevel(logging.WARNING)
@@ -98,9 +101,4 @@ async def detailed_health_check():
     return health_status
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.debug
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8000)
